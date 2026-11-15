@@ -69,6 +69,11 @@
       <button id="copymd">Copy as Markdown</button>
       <button id="print">Print / Save PDF</button>
     </div>
+    <div id="mdwrap" hidden style="margin-top:16px">
+      <h2 style="font-size:1rem;margin:0 0 8px">Markdown (click the box to select, or copy)</h2>
+      <textarea id="mdbox" readonly style="min-height:260px" onclick="this.select()"></textarea>
+      <div class="row"><button class="primary" id="copymd2">Copy Markdown</button></div>
+    </div>
   </section>
 
   <section class="card">
@@ -202,13 +207,15 @@ function render(res) {
   if (res.notes.length) h += `<div class="notes">` + res.notes.map(n => `<p>${esc(n)}</p>`).join("") + `</div>`;
   $("out").innerHTML = h;
   $("actions").hidden = false;
+  $("mdbox").value = toMarkdown(res);
+  $("mdwrap").hidden = false;
 }
 
 function run() {
   const text = $("input").value;
-  if (!text.trim()) { $("out").innerHTML = '<p class="hint">Paste or import a list first.</p>'; $("actions").hidden = true; return; }
+  if (!text.trim()) { $("out").innerHTML = '<p class="hint">Paste or import a list first.</p>'; $("actions").hidden = true; $("mdwrap").hidden = true; return; }
   const data = parseList(parseDelimited(text));
-  if (!data.entries.length) { $("out").innerHTML = '<p class="warn">Could not find any roles. Make sure the list includes the ROLE header row with times (e.g. 9:00 AM).</p>'; $("actions").hidden = true; return; }
+  if (!data.entries.length) { $("out").innerHTML = '<p class="warn">Could not find any roles. Make sure the list includes the ROLE header row with times (e.g. 9:00 AM).</p>'; $("actions").hidden = true; $("mdwrap").hidden = true; return; }
   const cfg = parseConfig($("config").value);
   render(summarize(data, cfg));
   localStorage.setItem("ccf-input", text);
@@ -219,7 +226,7 @@ function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add
 // ---------- events ----------
 $("go").onclick = run;
 $("input").addEventListener("paste", () => setTimeout(run, 50));
-$("clear").onclick = () => { $("input").value = ""; $("out").innerHTML = '<p class="hint">The summary will show here.</p>'; $("actions").hidden = true; localStorage.removeItem("ccf-input"); };
+$("clear").onclick = () => { $("input").value = ""; $("out").innerHTML = '<p class="hint">The summary will show here.</p>'; $("actions").hidden = true; $("mdwrap").hidden = true; localStorage.removeItem("ccf-input"); };
 $("sample").onclick = () => { $("input").value = SAMPLE.map(l => l.split("|").join("\t")).join("\n"); run(); };
 $("applycfg").onclick = () => { localStorage.setItem("ccf-config", $("config").value); run(); toast("Rows applied"); };
 $("resetcfg").onclick = () => { $("config").value = DEFAULT_CONFIG; localStorage.removeItem("ccf-config"); run(); };
@@ -245,13 +252,20 @@ $("copy").onclick = () => {
   try { document.execCommand("copy"); toast("Table copied"); } catch (e) { toast("Copy failed"); }
   sel.removeAllRanges();
 };
-$("copymd").onclick = async () => {
-  const r = lastResult; if (!r) return;
+function toMarkdown(r) {
   let md = `**${r.title}**\n\n| Role | ${r.shifts.map(s => s.name).join(" | ")} |\n|---|${r.shifts.map(() => "---|").join("")}\n`;
   r.rows.forEach(x => md += `| ${x.label} | ${x.cells.join(" | ")} |\n`);
   if (r.notes.length) md += "\n" + r.notes.join("\n") + "\n";
-  try { await navigator.clipboard.writeText(md); toast("Markdown copied"); } catch (e) { toast("Copy failed"); }
-};
+  return md;
+}
+async function copyMd() {
+  if (!lastResult) return;
+  const md = toMarkdown(lastResult);
+  try { await navigator.clipboard.writeText(md); toast("Markdown copied"); }
+  catch (e) { $("mdbox").select(); document.execCommand("copy"); toast("Markdown copied"); }
+}
+$("copymd").onclick = copyMd;
+$("copymd2").onclick = copyMd;
 $("print").onclick = () => print();
 
 // ---------- sample (| = tab) ----------
