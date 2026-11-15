@@ -47,7 +47,7 @@
     <div class="row">
       <button class="primary" id="go">Summarize</button>
       <label class="btn">Import file (.xlsx .csv .tsv .txt)<input type="file" id="file" accept=".xlsx,.xls,.csv,.tsv,.txt"></label>
-      <button id="sample">Load sample (Nov 15)</button>
+      <button id="sample">Load sample</button>
       <button id="clear">Clear</button>
     </div>
   </section>
@@ -244,37 +244,33 @@ $("print").onclick = () => print();
 
 // ---------- sample (| = tab) ----------
 const SAMPLE = [
-"NOVEMBER 15 CCF VOLUNTEER LIST",
+"SAMPLE CCF VOLUNTEER LIST",
 "ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
 "VOLUNTEER & SPEAKER CARE",
 "ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
-"1|Speaker Care|Doray Refuerzo|Doray Refuerzo|Doray Refuerzo|Doray Refuerzo",
-"3|VM/ Comms Custodian|Fernando Cayno|Fernando Cayno||",
-"4|VM - Volunteer Care|Arlene Cayno|Arlene Cayno|Byron John Veloria|Byron John Veloria",
-"5|Volunteer Management|Charles Cayno|Charles Cayno|Charles Cayno|Charles Cayno",
-"6|VM Trainee|Byron John Veloria|||",
+"1|Speaker Care|Person A|Person A|Person A|Person A",
+"4|VM - Volunteer Care|Person B|Person B|Person C|Person C",
+"5|Volunteer Management|Person D|Person D|Person D|Person D",
 "AUDIO",
 "ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
-"1|FOH|Chrissie Tan|Chrissie Tan|Mark Calpito|Mark Calpito",
-"6|Monitor Mix|Randie Fenis|Randie Fenis|Randie Fenis|Randie Fenis",
-"10|BC Mix|AJ Carpio|AJ Carpio|Vermont Paguiligan|Vermont Paguiligan",
+"1|FOH|Person E|Person E|Person F|Person F",
+"6|Monitor Mix|Person G|Person G|Person G|Person G",
+"10|BC Mix|Person H|Person H|Person I|Person I",
 "LIGHTS",
 "ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
-"1|Lights Team Lead|Andrea Destajo|Andrea Destajo|Andrea Destajo|Andrea Destajo",
-"2|Lighting Operator|Henrico Cruz|Henrico Cruz|Claire Manoriña|Claire Manoriña",
-"3|Lighting Assist|Jefferson Macasa|Jefferson Macasa|Faith Castro|Faith Castro",
+"1|Lights Team Lead|Person J|Person J|Person J|Person J",
+"2|Lighting Operator|Person K|Person K|Person L|Person L",
 "CAMERA",
 "ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
-"1|Camera Director|Dennis Sacdalan|Dennis Sacdalan|Jojo Nadela|",
-"2|Technical Director (Switcher)|||Joy Apalisok|Joy Apalisok",
+"1|Camera Director|Person M|Person M|Person N|",
+"2|Technical Director (Switcher)|||Person O|Person O",
 "STAGE",
 "ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
-"2|Stage Manager|Elaine Matito|Elaine Matito|Josh Angeles|Josh Angeles",
+"2|Stage Manager|Person P|Person P|Person Q|Person Q",
 "GRAPHICS",
 "ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
-"1|Graphics Team Lead|Kristine Guarin|Kristine Guarin|Kristine Guarin|Kristine Guarin"
+"1|Graphics Team Lead|Person R|Person R|Person R|Person R"
 ];
-
 // ---------- init ----------
 $("config").value = localStorage.getItem("ccf-config") || DEFAULT_CONFIG;
 const saved = localStorage.getItem("ccf-input");
