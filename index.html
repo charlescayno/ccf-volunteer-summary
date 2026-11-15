@@ -73,6 +73,9 @@
       <h2 style="font-size:1rem;margin:0 0 8px">Markdown (click the box to select, or copy)</h2>
       <textarea id="mdbox" readonly style="min-height:260px" onclick="this.select()"></textarea>
       <div class="row"><button class="primary" id="copymd2">Copy Markdown</button></div>
+      <h2 style="font-size:1rem;margin:16px 0 8px">Plain text, one line per role (for Messenger / Viber)</h2>
+      <textarea id="txtbox" readonly style="min-height:200px" onclick="this.select()"></textarea>
+      <div class="row"><button class="primary" id="copytxt">Copy text</button></div>
     </div>
   </section>
 
@@ -208,6 +211,7 @@ function render(res) {
   $("out").innerHTML = h;
   $("actions").hidden = false;
   $("mdbox").value = toMarkdown(res);
+  $("txtbox").value = toText(res);
   $("mdwrap").hidden = false;
 }
 
@@ -264,6 +268,19 @@ async function copyMd() {
   try { await navigator.clipboard.writeText(md); toast("Markdown copied"); }
   catch (e) { $("mdbox").select(); document.execCommand("copy"); toast("Markdown copied"); }
 }
+function toText(r) {
+  let t = r.title + "\n\n";
+  r.rows.forEach(x => t += `${x.label}: ${r.shifts.map((s, i) => s.name.split(" ")[0] + " - " + x.cells[i]).join(" | ")}\n`);
+  if (r.notes.length) t += "\n" + r.notes.join("\n") + "\n";
+  return t;
+}
+$("copytxt").onclick = async () => {
+  if (!lastResult) return;
+  const t = toText(lastResult);
+  try { await navigator.clipboard.writeText(t); }
+  catch (e) { $("txtbox").select(); document.execCommand("copy"); }
+  toast("Text copied");
+};
 $("copymd").onclick = copyMd;
 $("copymd2").onclick = copyMd;
 $("print").onclick = () => print();
