@@ -52,7 +52,17 @@
     </div>
   </section>
 
+  <section class="card">
+    <h2>Or load from Google Sheets</h2>
+    <input id="sheeturl" type="url" placeholder="https://docs.google.com/spreadsheets/d/.../edit?gid=..." style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:.9rem">
+    <div class="row">
+      <button class="primary" id="loadsheet">Load from link</button>
+      <span class="hint" id="sheetmsg">The sheet must be shared as "Anyone with the link can view".</span>
+    </div>
+  </section>
+
   <section class="card" id="outcard">
+
     <div id="out"><p class="hint">The summary will show here.</p></div>
     <div class="row" id="actions" hidden>
       <button class="primary" id="copy">Copy table</button>
@@ -271,7 +281,33 @@ const SAMPLE = [
 "ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
 "1|Graphics Team Lead|Person R|Person R|Person R|Person R"
 ];
+// ---------- google sheets ----------
+$("sheeturl").value = localStorage.getItem("ccf-sheeturl") || "https://docs.google.com/spreadsheets/d/1JxiNX2RplOdC-9RVtJ1YsGYYisBhvQnYgjP9jrSDZic/edit?gid=849677441#gid=849677441";
+$("loadsheet").onclick = async () => {
+  const url = $("sheeturl").value.trim();
+  const m = /\/spreadsheets\/d\/([\w-]+)/.exec(url);
+  const msg = $("sheetmsg"); msg.className = "hint";
+  if (!m) { msg.className = "warn"; msg.textContent = "That does not look like a Google Sheets link."; return; }
+  const g = /[#&?]gid=(\d+)/.exec(url);
+  const api = `https://docs.google.com/spreadsheets/d/${m[1]}/gviz/tq?tqx=out:csv${g ? "&gid=" + g[1] : ""}`;
+  msg.textContent = "Loading...";
+  try {
+    const res = await fetch(api);
+    if (!res.ok) throw new Error(res.status);
+    const text = await res.text();
+    if (/^\s*<(!doctype|html)/i.test(text)) throw new Error("html");
+    $("input").value = text;
+    localStorage.setItem("ccf-sheeturl", url);
+    run();
+    msg.textContent = "Loaded from Google Sheets.";
+  } catch (e) {
+    msg.className = "warn";
+    msg.textContent = "Could not read the sheet. In Google Sheets, click Share > General access > \"Anyone with the link\" (Viewer), then try again. Or paste the list above.";
+  }
+};
+
 // ---------- init ----------
+
 $("config").value = localStorage.getItem("ccf-config") || DEFAULT_CONFIG;
 const saved = localStorage.getItem("ccf-input");
 if (saved) { $("input").value = saved; run(); }
