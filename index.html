@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CCF Volunteer List Summarizer</title>
+<style>
+  :root{--bg:#f4f6fa;--card:#fff;--ink:#1b2333;--mute:#5d6778;--line:#dfe4ec;--accent:#2457d6;--accent-ink:#fff;--soft:#eef2fb}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  main{max-width:1000px;margin:0 auto;padding:24px 16px 64px}
+  h1{font-size:1.5rem;margin:0 0 4px}
+  .sub{color:var(--mute);margin:0 0 24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:16px}
+  .card h2{font-size:1rem;margin:0 0 8px}
+  textarea{width:100%;min-height:180px;border:1px solid var(--line);border-radius:8px;padding:12px;font:13px/1.4 ui-monospace,Consolas,monospace;resize:vertical;color:var(--ink)}
+  .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;align-items:center}
+  button,label.btn{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:8px;padding:8px 14px;font:inherit;font-size:.9rem;cursor:pointer}
+  button:hover,label.btn:hover{background:var(--soft)}
+  button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+  button.primary:hover{background:#1c47b3}
+  input[type=file]{display:none}
+  .hint{color:var(--mute);font-size:.85rem}
+  #out h2{font-size:1.05rem;letter-spacing:.02em;margin:0 0 12px}
+  .wrap{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:.95rem}
+  th,td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}
+  th{background:var(--soft)}
+  td:first-child{font-weight:500}
+  .notes{margin:12px 0 0;color:var(--ink);font-size:.95rem}
+  .notes p{margin:2px 0}
+  .warn{color:#9a3412}
+  details summary{cursor:pointer;font-weight:600}
+  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:8px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+  @media print{body{background:#fff}.card:not(#outcard){display:none}#outcard{border:0;padding:0}.row{display:none}}
+</style>
+</head>
+<body>
+<main>
+  <h1>CCF Volunteer List Summarizer</h1>
+  <p class="sub">Paste the full volunteer list (copied from Excel / Google Sheets) or import a file, and get the short AM / PM table.</p>
+
+  <section class="card">
+    <h2>1. Import the list</h2>
+    <textarea id="input" placeholder="Paste the volunteer list here (tab-separated, straight from the spreadsheet)..." spellcheck="false"></textarea>
+    <div class="row">
+      <button class="primary" id="go">Summarize</button>
+      <label class="btn">Import file (.xlsx .csv .tsv .txt)<input type="file" id="file" accept=".xlsx,.xls,.csv,.tsv,.txt"></label>
+      <button id="sample">Load sample (Nov 15)</button>
+      <button id="clear">Clear</button>
+    </div>
+  </section>
+
+  <section class="card" id="outcard">
+    <div id="out"><p class="hint">The summary will show here.</p></div>
+    <div class="row" id="actions" hidden>
+      <button class="primary" id="copy">Copy table</button>
+      <button id="copymd">Copy as Markdown</button>
+      <button id="print">Print / Save PDF</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Rows to show (edit if needed)</summary>
+      <p class="hint">One row per line: <code>Label: role name | role name | ...</code>. Role names must match the list's ROLE column (not case sensitive). Names appear in the order the roles are listed.</p>
+      <textarea id="config" style="min-height:230px"></textarea>
+      <div class="row"><button id="resetcfg">Reset to default</button><button id="applycfg" class="primary">Apply</button></div>
+    </details>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+const DEFAULT_CONFIG = [
+  "Camera Director: Camera Director",
+  "FOH Mix: FOH",
+  "BC Mix: BC Mix",
+  "Monitor Mix: Monitor Mix",
+  "Lights: Lights Team Lead | Lighting Operator | Lighting Assist",
+  "Graphics Lead/s: Graphics Team Lead",
+  "Stage Manager: Stage Manager",
+  "Speaker Care: Speaker Care",
+  "VM: Volunteer Management | VM - Volunteer Care | VM/ Comms Custodian | VM Trainee",
+  "Technical Director (Switcher): Technical Director (Switcher)"
+].join("\n");
+
+const SKIP = /^(n\/a|na|tba|tbd|-|—|)$/i;
+const $ = id => document.getElementById(id);
+const norm = s => String(s || "").toLowerCase().replace(/\s+/g, " ").trim();
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+// ---------- parsing ----------
+function parseDelimited(text) {
+  const delim = text.includes("\t") ? "\t" : ",";
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else if (c === '"' && cell === "") q = true;
+    else if (c === delim) { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell); rows.push(row); row = []; cell = "";
+    } else cell += c;
+  }
+  row.push(cell); rows.push(row);
+  return rows.map(r => r.map(x => x.trim()));
+}
+
+function timeLabel(t) {
+  const m = /(\d{1,2}):(\d{2})\s*([AP]M|NN)/i.exec(t);
+  if (!m) return t;
+  return Number(m[1]) + (m[2] === "00" ? "" : ":" + m[2]) + m[3].toLowerCase();
+}
+
+function parseList(rows) {
+  let title = "CCF VOLUNTEER LIST";
+  let times = null, slotStart = -1, section = "";
+  const entries = []; // {section, role, slots[]}
+  for (const r of rows) {
+    const nz = r.filter(x => x !== "");
+    if (!nz.length) continue;
+    if (nz.length === 1 && /volunteer list/i.test(nz[0])) { title = nz[0]; continue; }
+    if (norm(r[0]) === "role") {
+      const idx = r.map((x, i) => /\d{1,2}:\d{2}/.test(x) ? i : -1).filter(i => i >= 0);
+      if (idx.length) { slotStart = idx[0]; times = idx.map(i => r[i]); }
+      continue;
+    }
+    if (nz.length === 1 && nz[0] === nz[0].toUpperCase() && !/^\d+$/.test(nz[0])) { section = nz[0]; continue; }
+    if (slotStart < 0) continue;
+    let role = "";
+    for (let i = slotStart - 1; i >= 0; i--) if (r[i] && !/^\d+$/.test(r[i])) { role = r[i]; break; }
+    if (!role) continue;
+    const slots = times.map((_, k) => r[slotStart + k] || "");
+    entries.push({ section, role, slots });
+  }
+  return { title, times: times || [], entries };
+}
+
+function parseConfig(text) {
+  return text.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+    const i = l.indexOf(":");
+    return { label: l.slice(0, i).trim(), roles: l.slice(i + 1).split("|").map(norm).filter(Boolean) };
+  }).filter(c => c.label && c.roles.length);
+}
+
+// ---------- summarize ----------
+function summarize(data, cfg) {
+  const n = data.times.length;
+  const half = Math.ceil(n / 2);
+  const shifts = [
+    { name: "AM Shift " + data.times.slice(0, half).map(timeLabel).join(" / "), slots: [...Array(half).keys()] },
+    { name: "PM Shift " + data.times.slice(half).map(timeLabel).join(" / "), slots: [...Array(n - half).keys()].map(i => i + half) }
+  ];
+  const notes = [], rows = [];
+  for (const c of cfg) {
+    const slotNames = data.times.map(() => []);
+    for (const role of c.roles) {
+      for (const e of data.entries.filter(e => norm(e.role) === role)) {
+        e.slots.forEach((nm, k) => { if (!SKIP.test(nm.trim()) && !slotNames[k].includes(nm.trim())) slotNames[k].push(nm.trim()); });
+      }
+    }
+    const cells = shifts.map(sh => {
+      const filled = sh.slots.filter(k => slotNames[k].length);
+      const empty = sh.slots.filter(k => !slotNames[k].length);
+      const names = [];
+      sh.slots.forEach(k => slotNames[k].forEach(x => { if (!names.includes(x)) names.push(x); }));
+      const partial = filled.length && empty.length;
+      if (partial) {
+        empty.forEach(k => notes.push(`${timeLabel(data.times[k])} ${c.label} slot is open (${names.join(", ")} through ${timeLabel(data.times[filled[filled.length - 1]])} only).`));
+      }
+      return names.length ? names.map(x => partial ? x + "*" : x).join(", ") : "—";
+    });
+    rows.push({ label: c.label, cells });
+  }
+  return { title: data.title, shifts, rows, notes };
+}
+
+// ---------- render ----------
+let lastResult = null;
+function render(res) {
+  lastResult = res;
+  let h = `<h2>${esc(res.title)}</h2><div class="wrap"><table id="tbl"><thead><tr><th>Role</th>` +
+    res.shifts.map(s => `<th>${esc(s.name)}</th>`).join("") + `</tr></thead><tbody>`;
+  for (const r of res.rows) h += `<tr><td>${esc(r.label)}</td>` + r.cells.map(c => `<td>${esc(c)}</td>`).join("") + `</tr>`;
+  h += `</tbody></table></div>`;
+  if (res.notes.length) h += `<div class="notes">` + res.notes.map(n => `<p>${esc(n)}</p>`).join("") + `</div>`;
+  $("out").innerHTML = h;
+  $("actions").hidden = false;
+}
+
+function run() {
+  const text = $("input").value;
+  if (!text.trim()) { $("out").innerHTML = '<p class="hint">Paste or import a list first.</p>'; $("actions").hidden = true; return; }
+  const data = parseList(parseDelimited(text));
+  if (!data.entries.length) { $("out").innerHTML = '<p class="warn">Could not find any roles. Make sure the list includes the ROLE header row with times (e.g. 9:00 AM).</p>'; $("actions").hidden = true; return; }
+  const cfg = parseConfig($("config").value);
+  render(summarize(data, cfg));
+  localStorage.setItem("ccf-input", text);
+}
+
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1600); }
+
+// ---------- events ----------
+$("go").onclick = run;
+$("input").addEventListener("paste", () => setTimeout(run, 50));
+$("clear").onclick = () => { $("input").value = ""; $("out").innerHTML = '<p class="hint">The summary will show here.</p>'; $("actions").hidden = true; localStorage.removeItem("ccf-input"); };
+$("sample").onclick = () => { $("input").value = SAMPLE.map(l => l.split("|").join("\t")).join("\n"); run(); };
+$("applycfg").onclick = () => { localStorage.setItem("ccf-config", $("config").value); run(); toast("Rows applied"); };
+$("resetcfg").onclick = () => { $("config").value = DEFAULT_CONFIG; localStorage.removeItem("ccf-config"); run(); };
+
+$("file").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    if (/\.xlsx?$/i.test(f.name)) {
+      if (!window.XLSX) { toast("Excel reader not loaded (offline?). Paste the text instead."); return; }
+      const wb = XLSX.read(await f.arrayBuffer());
+      $("input").value = XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]], { FS: "\t" });
+    } else $("input").value = await f.text();
+    run();
+  } catch (err) { toast("Could not read file"); }
+  e.target.value = "";
+};
+
+$("copy").onclick = () => {
+  const tbl = $("tbl"); const range = document.createRange(); range.selectNode(tbl);
+  const sel = getSelection(); sel.removeAllRanges(); sel.addRange(range);
+  try { document.execCommand("copy"); toast("Table copied"); } catch (e) { toast("Copy failed"); }
+  sel.removeAllRanges();
+};
+$("copymd").onclick = async () => {
+  const r = lastResult; if (!r) return;
+  let md = `**${r.title}**\n\n| Role | ${r.shifts.map(s => s.name).join(" | ")} |\n|---|${r.shifts.map(() => "---|").join("")}\n`;
+  r.rows.forEach(x => md += `| ${x.label} | ${x.cells.join(" | ")} |\n`);
+  if (r.notes.length) md += "\n" + r.notes.join("\n") + "\n";
+  try { await navigator.clipboard.writeText(md); toast("Markdown copied"); } catch (e) { toast("Copy failed"); }
+};
+$("print").onclick = () => print();
+
+// ---------- sample (| = tab) ----------
+const SAMPLE = [
+"NOVEMBER 15 CCF VOLUNTEER LIST",
+"ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
+"VOLUNTEER & SPEAKER CARE",
+"ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
+"1|Speaker Care|Doray Refuerzo|Doray Refuerzo|Doray Refuerzo|Doray Refuerzo",
+"3|VM/ Comms Custodian|Fernando Cayno|Fernando Cayno||",
+"4|VM - Volunteer Care|Arlene Cayno|Arlene Cayno|Byron John Veloria|Byron John Veloria",
+"5|Volunteer Management|Charles Cayno|Charles Cayno|Charles Cayno|Charles Cayno",
+"6|VM Trainee|Byron John Veloria|||",
+"AUDIO",
+"ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
+"1|FOH|Chrissie Tan|Chrissie Tan|Mark Calpito|Mark Calpito",
+"6|Monitor Mix|Randie Fenis|Randie Fenis|Randie Fenis|Randie Fenis",
+"10|BC Mix|AJ Carpio|AJ Carpio|Vermont Paguiligan|Vermont Paguiligan",
+"LIGHTS",
+"ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
+"1|Lights Team Lead|Andrea Destajo|Andrea Destajo|Andrea Destajo|Andrea Destajo",
+"2|Lighting Operator|Henrico Cruz|Henrico Cruz|Claire Manoriña|Claire Manoriña",
+"3|Lighting Assist|Jefferson Macasa|Jefferson Macasa|Faith Castro|Faith Castro",
+"CAMERA",
+"ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
+"1|Camera Director|Dennis Sacdalan|Dennis Sacdalan|Jojo Nadela|",
+"2|Technical Director (Switcher)|||Joy Apalisok|Joy Apalisok",
+"STAGE",
+"ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
+"2|Stage Manager|Elaine Matito|Elaine Matito|Josh Angeles|Josh Angeles",
+"GRAPHICS",
+"ROLE||9:00 AM|12:00 NN|3:00 PM|6:00 PM",
+"1|Graphics Team Lead|Kristine Guarin|Kristine Guarin|Kristine Guarin|Kristine Guarin"
+];
+
+// ---------- init ----------
+$("config").value = localStorage.getItem("ccf-config") || DEFAULT_CONFIG;
+const saved = localStorage.getItem("ccf-input");
+if (saved) { $("input").value = saved; run(); }
+</script>
+</body>
+</html>
